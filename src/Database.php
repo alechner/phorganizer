@@ -217,6 +217,25 @@ class Database
         $stmt->execute([$filepath]);
     }
 
+    public function deleteById(int $id): void
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM photos WHERE id = ?');
+        $stmt->execute([$id]);
+    }
+
+    public function updateFilepath(int $id, string $newFilepath, string $newDirectory): void
+    {
+        $stmt = $this->pdo->prepare('UPDATE photos SET filepath = ?, directory = ?, filename = ? WHERE id = ?');
+        $stmt->execute([$newFilepath, $newDirectory, basename($newFilepath), $id]);
+    }
+
+    public function getDirectories(): array
+    {
+        return $this->pdo->query(
+            'SELECT DISTINCT directory FROM photos ORDER BY directory ASC'
+        )->fetchAll(PDO::FETCH_COLUMN);
+    }
+
     public function getPdo(): PDO
     {
         return $this->pdo;

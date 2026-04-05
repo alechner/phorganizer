@@ -1,11 +1,11 @@
 <?php
 
 /**
- * serve.php – securely serve image files stored on disk.
+ * serve.php – securely serve image and video files stored on disk.
  *
  * Usage:
- *   serve.php?id=123           → full image
- *   serve.php?id=123&thumb=1   → 200×200 thumbnail
+ *   serve.php?id=123           → full file
+ *   serve.php?id=123&thumb=1   → 200×200 thumbnail (images only)
  */
 
 require_once __DIR__ . '/config.php';
@@ -47,12 +47,32 @@ $mimeMap = [
     'heic' => 'image/heic',
     'heif' => 'image/heif',
     'svg'  => 'image/svg+xml',
+    // video
+    'mp4'  => 'video/mp4',
+    'mov'  => 'video/quicktime',
+    'avi'  => 'video/x-msvideo',
+    'mkv'  => 'video/x-matroska',
+    'webm' => 'video/webm',
+    'm4v'  => 'video/x-m4v',
+    'wmv'  => 'video/x-ms-wmv',
+    'flv'  => 'video/x-flv',
+    '3gp'  => 'video/3gpp',
+    'mpeg' => 'video/mpeg',
+    'mpg'  => 'video/mpeg',
 ];
 
 $mime = $mimeMap[$ext] ?? 'application/octet-stream';
 
-if ($thumb && in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif'])) {
-    serveThumb($filepath, $mime, (int) ($photo['orientation'] ?? 0));
+$thumbableImages = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif'];
+
+if ($thumb) {
+    if (in_array($ext, $thumbableImages)) {
+        serveThumb($filepath, $mime, (int) ($photo['orientation'] ?? 0), $ext);
+    } else {
+        // No thumbnail available for videos or unsupported formats
+        http_response_code(404);
+        exit('No thumbnail available');
+    }
 } else {
     header('Content-Type: ' . $mime);
     header('Content-Length: ' . filesize($filepath));
@@ -60,7 +80,7 @@ if ($thumb && in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff'
     readfile($filepath);
 }
 
-function serveThumb(string $filepath, string $mime, int $orientation): void
+function serveThumb(string $filepath, string $mime, int $orientation, string $ext): void
 {
     $thumbSize = 200;
 

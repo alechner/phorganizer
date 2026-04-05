@@ -23,7 +23,8 @@ if ($action === 'import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         $flashType    = 'error';
         $view         = 'import';
     } else {
-        $importer     = new Importer(SUPPORTED_EXTENSIONS);
+        $allExtensions = array_merge(SUPPORTED_EXTENSIONS, SUPPORTED_VIDEO_EXTENSIONS);
+        $importer     = new Importer($allExtensions);
         $importResult = $importer->import($importPath, $db);
         $totalPhotos  = $db->countPhotos();
         $view         = 'import';
@@ -32,6 +33,102 @@ if ($action === 'import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             $flashType    = 'success';
         }
     }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
+    $bulkAction     = $_POST['bulk_action'];
+    $ids            = array_values(array_filter(array_map('intval', (array) ($_POST['ids'] ?? []))));
+    $returnGroup    = $_POST['return_group']    ?? 'directory';
+    $returnSelected = $_POST['return_selected'] ?? '';
+
+    if ($bulkAction === 'delete' && !empty($ids)) {
+        $deleted = 0;
+        $bulkErrors = [];
+        foreach ($ids as $fid) {
+            $photo = $db->getById($fid);
+            if (!$photo) {
+                continue;
+            }
+            if (is_file($photo['filepath'])) {
+                if (@unlink($photo['filepath'])) {
+                    $db->deleteById($fid);
+                    $deleted++;
+                } else {
+                    $bulkErrors[] = 'Could not delete file: ' . $photo['filename'];
+                }
+            } else {
+                // File already gone from disk – remove from DB
+                $db->deleteById($fid);
+                $deleted++;
+            }
+        }
+        $flashMessage = 'Deleted ' . $deleted . ' file(s).';
+        if (!empty($bulkErrors)) {
+            $flashMessage .= ' Errors: ' . implode('; ', $bulkErrors);
+            $flashType = 'error';
+        } else {
+            $flashType = 'success';
+        }
+        $totalPhotos = $db->countPhotos();
+        header('Location: index.php?view=list&group=' . urlencode($returnGroup)
+            . '&selected=' . urlencode($returnSelected)
+            . '&flash=' . urlencode($flashMessage)
+            . '&flash_type=' . urlencode($flashType));
+        exit;
+    }
+
+    if ($bulkAction === 'move' && !empty($ids)) {
+        $targetDir = rtrim(trim($_POST['target_directory'] ?? ''), '/\\');
+        if ($targetDir === '') {
+            $flashMessage = 'Please specify a target directory.';
+            $flashType    = 'error';
+        } elseif (!is_dir($targetDir)) {
+            $flashMessage = 'Target directory does not exist: ' . $targetDir;
+            $flashType    = 'error';
+        } else {
+            $moved = 0;
+            $bulkErrors = [];
+            foreach ($ids as $fid) {
+                $photo = $db->getById($fid);
+                if (!$photo) {
+                    continue;
+                }
+                $newPath = $targetDir . DIRECTORY_SEPARATOR . $photo['filename'];
+                if (file_exists($newPath)) {
+                    $bulkErrors[] = 'File already exists in target: ' . $photo['filename'];
+                    continue;
+                }
+                if (!is_file($photo['filepath'])) {
+                    $bulkErrors[] = 'Source file not found: ' . $photo['filename'];
+                    continue;
+                }
+                if (@rename($photo['filepath'], $newPath)) {
+                    $db->updateFilepath($fid, $newPath, $targetDir);
+                    $moved++;
+                } else {
+                    $bulkErrors[] = 'Could not move: ' . $photo['filename'];
+                }
+            }
+            $flashMessage = 'Moved ' . $moved . ' file(s).';
+            if (!empty($bulkErrors)) {
+                $flashMessage .= ' Errors: ' . implode('; ', $bulkErrors);
+                $flashType = 'error';
+            } else {
+                $flashType = 'success';
+            }
+        }
+        header('Location: index.php?view=list&group=' . urlencode($returnGroup)
+            . '&selected=' . urlencode($returnSelected)
+            . '&flash=' . urlencode($flashMessage)
+            . '&flash_type=' . urlencode($flashType));
+        exit;
+    }
+}
+
+// Pick up flash messages passed via redirect
+if (empty($flashMessage) && !empty($_GET['flash'])) {
+    $flashMessage = $_GET['flash'];
+    $flashType    = $_GET['flash_type'] ?? 'info';
 }
 
 // ── Render view ───────────────────────────────────────────────────────────────
@@ -74,6 +171,7 @@ switch ($view) {
         $groupField  = '';
         $photosWithGps = [];
         $photosNoGps   = [];
+        $directories   = $db->getDirectories();
 
         switch ($group) {
             case 'directory':

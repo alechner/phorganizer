@@ -8,4 +8,8 @@ define('SUPPORTED_EXTENSIONS', [
     'raw', 'cr2', 'cr3', 'nef', 'nrw', 'orf', 'arw', 'rw2', 'dng',
 ]);
 
+define('SUPPORTED_VIDEO_EXTENSIONS', [
+    'mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', 'wmv', 'flv', '3gp', 'mpeg', 'mpg',
+]);
+
 define('APP_NAME', 'phorganizer');

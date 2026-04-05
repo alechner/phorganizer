@@ -1,10 +1,11 @@
 <?php
 /**
- * $group     - grouping mode: directory | extension | date | location
- * $groups    - array of group rows
- * $selected  - selected group value (from query string)
- * $photos    - photos in selected group
- * $db        - Database instance
+ * $group       - grouping mode: directory | extension | date | location
+ * $groups      - array of group rows
+ * $selected    - selected group value (from query string)
+ * $photos      - photos in selected group
+ * $directories - all known directories (for move target)
+ * $db          - Database instance
  */
 
 $groupLabels = [
@@ -13,6 +14,7 @@ $groupLabels = [
     'date'      => 'Date',
     'location'  => 'Location',
 ];
+$videoExts = SUPPORTED_VIDEO_EXTENSIONS;
 ?>
 
 <div class="list-page">
@@ -61,45 +63,98 @@ $groupLabels = [
         <?php if ($group === 'location' && $selected === '__map__'): ?>
             <?php include __DIR__ . '/map.php'; ?>
         <?php elseif (!empty($photos)): ?>
-            <div class="photos-header">
-                <h2 class="photos-title">
-                    <?php if ($group === 'directory'): ?>
-                        <?= htmlspecialchars($selected) ?>
-                    <?php elseif ($group === 'extension'): ?>
-                        .<?= htmlspecialchars(strtoupper($selected)) ?> files
-                    <?php elseif ($group === 'date'): ?>
-                        <?php
-                        $ts = ($selected !== 'Unknown') ? strtotime($selected . '-01') : false;
-                        echo htmlspecialchars($ts !== false ? date('F Y', $ts) : 'Unknown date');
-                        ?>
-                    <?php else: ?>
-                        <?= htmlspecialchars($selected) ?>
-                    <?php endif; ?>
-                    <span class="photos-count">(<?= number_format(count($photos)) ?>)</span>
-                </h2>
-            </div>
+            <form method="post" action="index.php" id="bulkForm">
+                <input type="hidden" name="bulk_action" id="bulkActionInput" value="">
+                <input type="hidden" name="return_group" value="<?= htmlspecialchars($group) ?>">
+                <input type="hidden" name="return_selected" value="<?= htmlspecialchars($selected) ?>">
 
-            <div class="photo-grid">
-                <?php foreach ($photos as $photo): ?>
-                    <a href="index.php?view=photo&id=<?= (int) $photo['id'] ?>" class="photo-card">
-                        <div class="photo-thumb-wrap">
-                            <img
-                                src="serve.php?id=<?= (int) $photo['id'] ?>&thumb=1"
-                                alt="<?= htmlspecialchars($photo['filename']) ?>"
-                                class="photo-thumb"
-                                loading="lazy"
-                                onerror="this.parentNode.innerHTML='<div class=\'thumb-placeholder\'>' + (this.alt.split('.').pop().toUpperCase() || '?') + '</div>'"
+                <div class="bulk-toolbar" id="bulkToolbar">
+                    <div class="bulk-toolbar-left">
+                        <span class="bulk-count" id="selectedCount">0 selected</span>
+                        <button type="button" class="btn btn-sm btn-secondary" id="selectAllBtn">Select All</button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="deselectAllBtn">Deselect All</button>
+                    </div>
+                    <div class="bulk-toolbar-right">
+                        <div class="bulk-move-group">
+                            <input
+                                type="text"
+                                name="target_directory"
+                                id="targetDirInput"
+                                list="dir-datalist"
+                                placeholder="Target directory path"
+                                class="form-control bulk-dir-input"
+                                autocomplete="off"
                             >
+                            <datalist id="dir-datalist">
+                                <?php foreach ($directories as $dir): ?>
+                                    <option value="<?= htmlspecialchars($dir) ?>">
+                                <?php endforeach; ?>
+                            </datalist>
+                            <button type="button" class="btn btn-sm btn-primary" id="moveBtn">Move</button>
                         </div>
-                        <div class="photo-card-info">
-                            <span class="photo-name"><?= htmlspecialchars($photo['filename']) ?></span>
-                            <?php if (!empty($photo['date_taken'])): ?>
-                                <span class="photo-date"><?= htmlspecialchars(substr($photo['date_taken'], 0, 10)) ?></span>
-                            <?php endif; ?>
+                        <button type="button" class="btn btn-sm btn-danger" id="deleteBtn">Delete</button>
+                        <button type="button" class="btn btn-sm btn-secondary" id="cancelSelectBtn">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="photos-header">
+                    <h2 class="photos-title">
+                        <?php if ($group === 'directory'): ?>
+                            <?= htmlspecialchars($selected) ?>
+                        <?php elseif ($group === 'extension'): ?>
+                            .<?= htmlspecialchars(strtoupper($selected)) ?> files
+                        <?php elseif ($group === 'date'): ?>
+                            <?php
+                            $ts = ($selected !== 'Unknown') ? strtotime($selected . '-01') : false;
+                            echo htmlspecialchars($ts !== false ? date('F Y', $ts) : 'Unknown date');
+                            ?>
+                        <?php else: ?>
+                            <?= htmlspecialchars($selected) ?>
+                        <?php endif; ?>
+                        <span class="photos-count">(<?= number_format(count($photos)) ?>)</span>
+                    </h2>
+                    <button type="button" class="btn btn-sm btn-secondary" id="toggleSelectMode">&#9745; Select</button>
+                </div>
+
+                <div class="photo-grid" id="photoGrid">
+                    <?php foreach ($photos as $photo): ?>
+                        <?php $isVideo = in_array(strtolower($photo['extension']), $videoExts); ?>
+                        <div class="photo-card-item" data-id="<?= (int) $photo['id'] ?>">
+                            <input
+                                type="checkbox"
+                                name="ids[]"
+                                value="<?= (int) $photo['id'] ?>"
+                                class="photo-checkbox"
+                                aria-label="Select <?= htmlspecialchars($photo['filename']) ?>"
+                            >
+                            <a href="index.php?view=photo&id=<?= (int) $photo['id'] ?>" class="photo-card">
+                                <div class="photo-thumb-wrap">
+                                    <?php if ($isVideo): ?>
+                                        <div class="thumb-placeholder video-placeholder">
+                                            <span class="video-icon">&#9654;</span>
+                                            <span class="video-ext">.<?= htmlspecialchars(strtoupper($photo['extension'])) ?></span>
+                                        </div>
+                                    <?php else: ?>
+                                        <img
+                                            src="serve.php?id=<?= (int) $photo['id'] ?>&thumb=1"
+                                            alt="<?= htmlspecialchars($photo['filename']) ?>"
+                                            class="photo-thumb"
+                                            loading="lazy"
+                                            onerror="this.parentNode.innerHTML='<div class=\'thumb-placeholder\'>' + (this.alt.split('.').pop().toUpperCase() || '?') + '</div>'"
+                                        >
+                                    <?php endif; ?>
+                                </div>
+                                <div class="photo-card-info">
+                                    <span class="photo-name"><?= htmlspecialchars($photo['filename']) ?></span>
+                                    <?php if (!empty($photo['date_taken'])): ?>
+                                        <span class="photo-date"><?= htmlspecialchars(substr($photo['date_taken'], 0, 10)) ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            </a>
                         </div>
-                    </a>
-                <?php endforeach; ?>
-            </div>
+                    <?php endforeach; ?>
+                </div>
+            </form>
 
         <?php elseif (!empty($selected) && $group !== 'location'): ?>
             <p class="empty-msg">No photos found for this selection.</p>
