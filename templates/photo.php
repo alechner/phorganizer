@@ -12,6 +12,22 @@ if (!empty($photo['raw_exif'])) {
     }
 }
 
+$videoExts = SUPPORTED_VIDEO_EXTENSIONS;
+$videoMimeMap = [
+    'mp4'  => 'video/mp4',
+    'mov'  => 'video/quicktime',
+    'avi'  => 'video/x-msvideo',
+    'mkv'  => 'video/x-matroska',
+    'webm' => 'video/webm',
+    'm4v'  => 'video/x-m4v',
+    'wmv'  => 'video/x-ms-wmv',
+    'flv'  => 'video/x-flv',
+    '3gp'  => 'video/3gpp',
+    'mpeg' => 'video/mpeg',
+    'mpg'  => 'video/mpeg',
+];
+$isVideo = in_array(strtolower($photo['extension']), $videoExts);
+
 function formatBytes(int $bytes): string {
     if ($bytes >= 1048576) return round($bytes / 1048576, 2) . ' MB';
     if ($bytes >= 1024)    return round($bytes / 1024, 1) . ' KB';
@@ -22,13 +38,27 @@ function formatBytes(int $bytes): string {
 <div class="photo-view">
     <div class="photo-view-back">
         <a href="javascript:history.back()" class="btn btn-sm">&larr; Back</a>
+        <form method="post" action="index.php" class="photo-delete-form"
+              onsubmit="return confirm('Permanently delete this file from disk?')">
+            <input type="hidden" name="bulk_action" value="delete">
+            <input type="hidden" name="ids[]" value="<?= (int) $photo['id'] ?>">
+            <input type="hidden" name="return_group" value="directory">
+            <input type="hidden" name="return_selected" value="<?= htmlspecialchars($photo['directory']) ?>">
+            <button type="submit" class="btn btn-sm btn-danger">&#x1F5D1; Delete</button>
+        </form>
     </div>
 
     <div class="photo-view-layout">
-        <!-- Image panel -->
+        <!-- Image / Video panel -->
         <div class="photo-view-image-panel">
             <div class="photo-full-wrap">
-                <?php if (in_array($photo['extension'], ['jpg','jpeg','png','gif','webp','bmp'])): ?>
+                <?php if ($isVideo): ?>
+                    <video controls class="photo-full video-player">
+                        <source src="serve.php?id=<?= (int) $photo['id'] ?>"
+                                type="<?= htmlspecialchars($videoMimeMap[strtolower($photo['extension'])] ?? 'video/mp4') ?>">
+                        Your browser does not support the video tag.
+                    </video>
+                <?php elseif (in_array($photo['extension'], ['jpg','jpeg','png','gif','webp','bmp'])): ?>
                     <img
                         src="serve.php?id=<?= (int) $photo['id'] ?>"
                         alt="<?= htmlspecialchars($photo['filename']) ?>"

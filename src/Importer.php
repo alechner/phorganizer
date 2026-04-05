@@ -12,7 +12,6 @@ class Importer
     {
         $this->extensions = array_map('strtolower', $supportedExtensions);
     }
-
     public function import(string $rootPath, Database $db): array
     {
         $this->imported = 0;
@@ -87,8 +86,7 @@ class Importer
         }
 
         // Try EXIF data (mainly for JPEG/TIFF)
-        if (in_array($extension, ['jpg', 'jpeg', 'tiff', 'tif', 'heic', 'heif'])) {
-            $exif = @exif_read_data($filepath, null, true, false);
+        if (in_array($extension, ['jpg', 'jpeg', 'tiff', 'tif', 'heic', 'heif'])) {            $exif = @exif_read_data($filepath, null, true, false);
             if (is_array($exif)) {
                 $rawExif = json_encode($exif, JSON_PARTIAL_OUTPUT_ON_ERROR);
 

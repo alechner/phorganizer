@@ -49,9 +49,16 @@
 
     <div class="import-info">
         <h2>Supported Formats</h2>
-        <p>The following file formats will be imported:</p>
+        <p>The following image formats will be imported:</p>
         <ul class="format-list">
             <?php foreach (SUPPORTED_EXTENSIONS as $ext): ?>
+                <li>.<?= htmlspecialchars(strtoupper($ext)) ?></li>
+            <?php endforeach; ?>
+        </ul>
+
+        <p>The following video formats will also be imported:</p>
+        <ul class="format-list">
+            <?php foreach (SUPPORTED_VIDEO_EXTENSIONS as $ext): ?>
                 <li>.<?= htmlspecialchars(strtoupper($ext)) ?></li>
             <?php endforeach; ?>
         </ul>

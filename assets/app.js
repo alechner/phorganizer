@@ -58,6 +58,139 @@
         }
     }
 
+    /* ── Multi-select ───────────────────────────────────────── */
+    function initMultiSelect() {
+        var grid         = document.getElementById('photoGrid');
+        var toolbar      = document.getElementById('bulkToolbar');
+        var toggleBtn    = document.getElementById('toggleSelectMode');
+        var selectAllBtn = document.getElementById('selectAllBtn');
+        var deselectBtn  = document.getElementById('deselectAllBtn');
+        var cancelBtn    = document.getElementById('cancelSelectBtn');
+        var deleteBtn    = document.getElementById('deleteBtn');
+        var moveBtn      = document.getElementById('moveBtn');
+        var countEl      = document.getElementById('selectedCount');
+        var actionInput  = document.getElementById('bulkActionInput');
+        var targetInput  = document.getElementById('targetDirInput');
+        var form         = document.getElementById('bulkForm');
+
+        if (!grid || !toolbar || !toggleBtn) return;
+
+        var selectMode = false;
+
+        function getCheckboxes() {
+            return Array.prototype.slice.call(grid.querySelectorAll('.photo-checkbox'));
+        }
+
+        function getChecked() {
+            return getCheckboxes().filter(function (cb) { return cb.checked; });
+        }
+
+        function updateUI() {
+            var checked = getChecked();
+            var n = checked.length;
+            countEl.textContent = n + ' selected';
+            if (n > 0) {
+                toolbar.classList.add('visible');
+            } else {
+                toolbar.classList.remove('visible');
+            }
+            // Highlight selected items
+            getCheckboxes().forEach(function (cb) {
+                var item = cb.closest('.photo-card-item');
+                if (item) {
+                    item.classList.toggle('selected', cb.checked);
+                }
+            });
+        }
+
+        function enterSelectMode() {
+            selectMode = true;
+            grid.classList.add('select-mode');
+            toggleBtn.textContent = '✕ Cancel Select';
+            updateUI();
+        }
+
+        function exitSelectMode() {
+            selectMode = false;
+            grid.classList.remove('select-mode');
+            toolbar.classList.remove('visible');
+            toggleBtn.textContent = '☑ Select';
+            getCheckboxes().forEach(function (cb) {
+                cb.checked = false;
+                var item = cb.closest('.photo-card-item');
+                if (item) item.classList.remove('selected');
+            });
+        }
+
+        toggleBtn.addEventListener('click', function () {
+            if (selectMode) {
+                exitSelectMode();
+            } else {
+                enterSelectMode();
+            }
+        });
+
+        cancelBtn.addEventListener('click', exitSelectMode);
+
+        // Click on photo-card-item in select mode toggles selection
+        grid.addEventListener('click', function (e) {
+            if (!selectMode) return;
+            var item = e.target.closest('.photo-card-item');
+            if (!item) return;
+            var cb = item.querySelector('.photo-checkbox');
+            if (!cb) return;
+            if (e.target === cb) {
+                // Direct checkbox click – let it handle itself, just update UI
+                updateUI();
+                return;
+            }
+            e.preventDefault();
+            cb.checked = !cb.checked;
+            updateUI();
+        });
+
+        // Checkbox change from keyboard
+        grid.addEventListener('change', function (e) {
+            if (e.target.classList.contains('photo-checkbox')) {
+                updateUI();
+            }
+        });
+
+        selectAllBtn.addEventListener('click', function () {
+            getCheckboxes().forEach(function (cb) { cb.checked = true; });
+            updateUI();
+        });
+
+        deselectBtn.addEventListener('click', function () {
+            getCheckboxes().forEach(function (cb) { cb.checked = false; });
+            updateUI();
+        });
+
+        deleteBtn.addEventListener('click', function () {
+            var n = getChecked().length;
+            if (n === 0) return;
+            if (!confirm('Permanently delete ' + n + ' file(s) from disk?')) return;
+            actionInput.value = 'delete';
+            form.submit();
+        });
+
+        moveBtn.addEventListener('click', function () {
+            var n = getChecked().length;
+            if (n === 0) {
+                alert('Please select at least one file.');
+                return;
+            }
+            var target = targetInput ? targetInput.value.trim() : '';
+            if (!target) {
+                alert('Please enter a target directory path.');
+                if (targetInput) targetInput.focus();
+                return;
+            }
+            actionInput.value = 'move';
+            form.submit();
+        });
+    }
+
     /* ── Utilities ──────────────────────────────────────────── */
     function escHtml(str) {
         return String(str)
@@ -91,5 +224,6 @@
     /* ── Init ───────────────────────────────────────────────── */
     document.addEventListener('DOMContentLoaded', function () {
         loadLeaflet(initMap);
+        initMultiSelect();
     });
 })();
