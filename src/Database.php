@@ -4,6 +4,26 @@ class Database
 {
     private PDO $pdo;
 
+    private const EMPTY_GROUP_TOKEN = '__EMPTY__';
+
+    private const CUSTOM_FIELDS = [
+        'directory'     => ['label' => 'Directory', 'type' => 'text'],
+        'extension'     => ['label' => 'Extension', 'type' => 'text'],
+        'filename'      => ['label' => 'Filename', 'type' => 'text'],
+        'filesize'      => ['label' => 'File size', 'type' => 'number'],
+        'date_taken'    => ['label' => 'Date taken', 'type' => 'date'],
+        'date_modified' => ['label' => 'Date modified', 'type' => 'date'],
+        'width'         => ['label' => 'Width', 'type' => 'number'],
+        'height'        => ['label' => 'Height', 'type' => 'number'],
+        'camera_make'   => ['label' => 'Camera make', 'type' => 'text'],
+        'camera_model'  => ['label' => 'Camera model', 'type' => 'text'],
+        'gps_latitude'  => ['label' => 'GPS latitude', 'type' => 'number'],
+        'gps_longitude' => ['label' => 'GPS longitude', 'type' => 'number'],
+        'gps_altitude'  => ['label' => 'GPS altitude', 'type' => 'number'],
+        'orientation'   => ['label' => 'Orientation', 'type' => 'number'],
+        'imported_at'   => ['label' => 'Imported at', 'type' => 'date'],
+    ];
+
     public function __construct(string $path)
     {
         $dir = dirname($path);
@@ -123,13 +143,94 @@ class Database
         ")->fetchAll();
     }
 
-    public function getByDirectory(string $directory): array
+    public function getByDirectory(string $directory, bool $includeSubdirectories = false): array
     {
+        if (!$includeSubdirectories) {
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM photos WHERE directory = ? ORDER BY date_taken ASC, filename ASC
+            ");
+            $stmt->execute([$directory]);
+            return $stmt->fetchAll();
+        }
+
+        $escapedPrefix = $this->escapeLike($directory) . '/%';
         $stmt = $this->pdo->prepare("
-            SELECT * FROM photos WHERE directory = ? ORDER BY date_taken ASC, filename ASC
+            SELECT * FROM photos
+            WHERE directory = :directory
+               OR directory LIKE :prefix ESCAPE '\\'
+            ORDER BY date_taken ASC, filename ASC
         ");
-        $stmt->execute([$directory]);
+        $stmt->execute([
+            ':directory' => $directory,
+            ':prefix' => $escapedPrefix,
+        ]);
         return $stmt->fetchAll();
+    }
+
+    public function getCustomFields(): array
+    {
+        return self::CUSTOM_FIELDS;
+    }
+
+    public function sanitizeCustomField(string $field, string $fallback = 'directory'): string
+    {
+        if (isset(self::CUSTOM_FIELDS[$field])) {
+            return $field;
+        }
+        return isset(self::CUSTOM_FIELDS[$fallback]) ? $fallback : 'directory';
+    }
+
+    public function sanitizeFilterOperator(string $operator): string
+    {
+        $allowed = [
+            'eq', 'neq', 'contains', 'starts_with', 'ends_with',
+            'gt', 'gte', 'lt', 'lte', 'is_empty', 'is_not_empty',
+        ];
+        return in_array($operator, $allowed, true) ? $operator : 'contains';
+    }
+
+    public function groupByCustomFilter(string $groupField, array $filter): array
+    {
+        $groupField = $this->sanitizeCustomField($groupField);
+        $params = [];
+        $whereSql = $this->buildFilterWhereSql($filter, $params);
+        $groupExpr = $this->groupExpression($groupField);
+
+        $sql = "
+            SELECT {$groupExpr} AS group_value, COUNT(*) AS count
+            FROM photos
+            {$whereSql}
+            GROUP BY group_value
+            ORDER BY count DESC, group_value ASC
+        ";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    public function getByCustomSelection(string $groupField, string $selected, array $filter): array
+    {
+        $groupField = $this->sanitizeCustomField($groupField);
+        $params = [];
+        $whereSql = $this->buildFilterWhereSql($filter, $params);
+        $groupExpr = $this->groupExpression($groupField);
+
+        $sql = "
+            SELECT *
+            FROM photos
+            {$whereSql}
+            " . ($whereSql === '' ? 'WHERE' : 'AND') . " {$groupExpr} = :selected_group
+            ORDER BY date_taken ASC, filename ASC
+        ";
+        $params[':selected_group'] = ($selected === '') ? self::EMPTY_GROUP_TOKEN : $selected;
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    public function getEmptyGroupToken(): string
+    {
+        return self::EMPTY_GROUP_TOKEN;
     }
 
     public function groupByExtension(): array
@@ -239,5 +340,61 @@ class Database
     public function getPdo(): PDO
     {
         return $this->pdo;
+    }
+
+    private function groupExpression(string $field): string
+    {
+        return "COALESCE(NULLIF(TRIM(CAST({$field} AS TEXT)), ''), '" . self::EMPTY_GROUP_TOKEN . "')";
+    }
+
+    private function buildFilterWhereSql(array $filter, array &$params): string
+    {
+        $field = $this->sanitizeCustomField((string) ($filter['field'] ?? ''), 'directory');
+        $operator = $this->sanitizeFilterOperator((string) ($filter['operator'] ?? 'contains'));
+        $value = trim((string) ($filter['value'] ?? ''));
+
+        if ($operator !== 'is_empty' && $operator !== 'is_not_empty' && $value === '') {
+            return '';
+        }
+
+        if ($operator === 'is_empty') {
+            return "WHERE ({$field} IS NULL OR TRIM(CAST({$field} AS TEXT)) = '')";
+        }
+        if ($operator === 'is_not_empty') {
+            return "WHERE ({$field} IS NOT NULL AND TRIM(CAST({$field} AS TEXT)) <> '')";
+        }
+
+        if (in_array($operator, ['contains', 'starts_with', 'ends_with'], true)) {
+            if ($operator === 'contains') {
+                $params[':filter_value'] = '%' . $this->escapeLike($value) . '%';
+            } elseif ($operator === 'starts_with') {
+                $params[':filter_value'] = $this->escapeLike($value) . '%';
+            } else {
+                $params[':filter_value'] = '%' . $this->escapeLike($value);
+            }
+            return "WHERE CAST({$field} AS TEXT) LIKE :filter_value ESCAPE '\\'";
+        }
+
+        $operatorSql = match ($operator) {
+            'eq' => '=',
+            'neq' => '!=',
+            'gt' => '>',
+            'gte' => '>=',
+            'lt' => '<',
+            'lte' => '<=',
+            default => '=',
+        };
+
+        $params[':filter_value'] = $value;
+        return "WHERE {$field} {$operatorSql} :filter_value";
+    }
+
+    private function escapeLike(string $value): string
+    {
+        return strtr($value, [
+            '\\' => '\\\\',
+            '%' => '\\%',
+            '_' => '\\_',
+        ]);
     }
 }

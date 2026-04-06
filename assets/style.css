@@ -201,6 +201,38 @@ a:hover { text-decoration: underline; }
     padding: 0;
 }
 
+.custom-filter-form,
+.directory-options-form {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: #fafbff;
+}
+
+.custom-filter-form .form-group {
+    margin-bottom: 10px;
+}
+
+.custom-filter-form .form-group label {
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+
+.custom-filter-form .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+.checkbox-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: .85rem;
+    color: var(--text);
+}
+
 .group-item a {
     display: flex;
     align-items: center;
@@ -228,6 +260,38 @@ a:hover { text-decoration: underline; }
     margin-left: 8px;
 }
 .group-item.active .group-count { background: #dbe4ff; border-color: #adbeff; color: var(--primary); }
+
+.directory-tree .dir-row {
+    display: flex;
+    align-items: stretch;
+}
+
+.directory-tree .dir-row > a {
+    flex: 1;
+}
+
+.dir-toggle,
+.dir-toggle-placeholder {
+    width: 30px;
+    flex: 0 0 30px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.dir-toggle:hover {
+    background: var(--bg);
+}
+
+.dir-toggle-placeholder {
+    cursor: default;
+}
+
+.dir-children {
+    padding-left: 14px;
+}
 
 /* ── Photo Grid ──────────────────────────────────────────── */
 .list-main { min-width: 0; }

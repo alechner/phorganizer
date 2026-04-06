@@ -191,6 +191,50 @@
         });
     }
 
+    function initDirectoryTree() {
+        var tree = document.getElementById('directoryTree');
+        if (!tree) return;
+
+        tree.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-dir-toggle]');
+            if (!btn) return;
+
+            var row = btn.closest('.dir-row');
+            var node = row ? row.parentElement : null;
+            if (!node) return;
+
+            var children = node.querySelector(':scope > .dir-children');
+            if (!children) return;
+
+            var expanded = btn.getAttribute('aria-expanded') === 'true';
+            btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+            var icon = btn.querySelector('.dir-toggle-icon');
+            if (icon) {
+                icon.innerHTML = expanded ? '&#9656;' : '&#9662;';
+            }
+            children.hidden = expanded;
+        });
+    }
+
+    function initCustomFilterForm() {
+        var operator = document.querySelector('[data-filter-operator]');
+        var valueInput = document.querySelector('[data-filter-value]');
+        if (!operator || !valueInput) return;
+
+        function syncValueState() {
+            var op = operator.value;
+            var disablesValue = op === 'is_empty' || op === 'is_not_empty';
+            valueInput.disabled = disablesValue;
+            valueInput.required = !disablesValue;
+            if (disablesValue) {
+                valueInput.value = '';
+            }
+        }
+
+        operator.addEventListener('change', syncValueState);
+        syncValueState();
+    }
+
     /* ── Utilities ──────────────────────────────────────────── */
     function escHtml(str) {
         return String(str)
@@ -225,5 +269,7 @@
     document.addEventListener('DOMContentLoaded', function () {
         loadLeaflet(initMap);
         initMultiSelect();
+        initDirectoryTree();
+        initCustomFilterForm();
     });
 })();

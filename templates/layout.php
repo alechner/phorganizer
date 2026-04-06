@@ -17,6 +17,7 @@
         <li><a href="index.php?view=list&group=extension" <?= (($view ?? '') === 'list' && ($group ?? '') === 'extension') ? 'class="active"' : '' ?>>By Extension</a></li>
         <li><a href="index.php?view=list&group=date" <?= (($view ?? '') === 'list' && ($group ?? '') === 'date') ? 'class="active"' : '' ?>>By Date</a></li>
         <li><a href="index.php?view=list&group=location" <?= (($view ?? '') === 'list' && ($group ?? '') === 'location') ? 'class="active"' : '' ?>>By Location</a></li>
+        <li><a href="index.php?view=list&group=custom" <?= (($view ?? '') === 'list' && ($group ?? '') === 'custom') ? 'class="active"' : '' ?>>Custom Filter</a></li>
         <li><a href="index.php?view=import" <?= ($view ?? '') === 'import' ? 'class="active"' : '' ?>>Import</a></li>
     </ul>
     <?php if ($totalPhotos > 0): ?>

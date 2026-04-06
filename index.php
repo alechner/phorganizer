@@ -9,7 +9,54 @@ $view        = $_GET['view']   ?? 'list';
 $group       = $_GET['group']  ?? 'directory';
 $selected    = $_GET['selected'] ?? '';
 $action      = $_GET['action'] ?? '';
+$includeSubdirs = ($_GET['include_subdirs'] ?? '0') === '1';
+$customGroupBy  = $db->sanitizeCustomField($_GET['custom_group_by'] ?? 'directory', 'directory');
+$customFilterField = $db->sanitizeCustomField($_GET['filter_field'] ?? 'directory', 'directory');
+$customFilterOperator = $db->sanitizeFilterOperator($_GET['filter_operator'] ?? 'contains');
+$customFilterValue = trim((string) ($_GET['filter_value'] ?? ''));
 $totalPhotos = $db->countPhotos();
+
+$buildListParams = static function (array $overrides = []) use (
+    $group,
+    $selected,
+    $includeSubdirs,
+    $customGroupBy,
+    $customFilterField,
+    $customFilterOperator,
+    $customFilterValue
+): array {
+    $params = [
+        'view' => 'list',
+        'group' => $group,
+    ];
+
+    if ($selected !== '') {
+        $params['selected'] = $selected;
+    }
+    if ($group === 'directory' && $includeSubdirs) {
+        $params['include_subdirs'] = '1';
+    }
+    if ($group === 'custom') {
+        $params['custom_group_by'] = $customGroupBy;
+        $params['filter_field'] = $customFilterField;
+        $params['filter_operator'] = $customFilterOperator;
+        if ($customFilterValue !== '') {
+            $params['filter_value'] = $customFilterValue;
+        }
+    }
+
+    foreach ($overrides as $key => $value) {
+        if ($value === null || $value === '') {
+            unset($params[$key]);
+        } else {
+            $params[$key] = $value;
+        }
+    }
+
+    return $params;
+};
+
+$returnQueryString = http_build_query($buildListParams());
 
 // ── Handle POST actions ───────────────────────────────────────────────────────
 $flashMessage = '';
@@ -40,6 +87,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
     $ids            = array_values(array_filter(array_map('intval', (array) ($_POST['ids'] ?? []))));
     $returnGroup    = $_POST['return_group']    ?? 'directory';
     $returnSelected = $_POST['return_selected'] ?? '';
+    $returnQueryRaw = (string) ($_POST['return_query'] ?? '');
+    parse_str($returnQueryRaw, $returnQuery);
+    if (!is_array($returnQuery)) {
+        $returnQuery = [];
+    }
+    $returnQuery['view'] = 'list';
+    $returnQuery['group'] = (string) ($returnQuery['group'] ?? $returnGroup);
+    if (!isset($returnQuery['selected']) && $returnSelected !== '') {
+        $returnQuery['selected'] = $returnSelected;
+    }
 
     if ($bulkAction === 'delete' && !empty($ids)) {
         $deleted = 0;
@@ -70,10 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
             $flashType = 'success';
         }
         $totalPhotos = $db->countPhotos();
-        header('Location: index.php?view=list&group=' . urlencode($returnGroup)
-            . '&selected=' . urlencode($returnSelected)
-            . '&flash=' . urlencode($flashMessage)
-            . '&flash_type=' . urlencode($flashType));
+        header('Location: index.php?' . http_build_query(array_merge($returnQuery, [
+            'flash' => $flashMessage,
+            'flash_type' => $flashType,
+        ])));
         exit;
     }
 
@@ -117,10 +174,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_action'])) {
                 $flashType = 'success';
             }
         }
-        header('Location: index.php?view=list&group=' . urlencode($returnGroup)
-            . '&selected=' . urlencode($returnSelected)
-            . '&flash=' . urlencode($flashMessage)
-            . '&flash_type=' . urlencode($flashType));
+        header('Location: index.php?' . http_build_query(array_merge($returnQuery, [
+            'flash' => $flashMessage,
+            'flash_type' => $flashType,
+        ])));
         exit;
     }
 }
@@ -172,6 +229,14 @@ switch ($view) {
         $photosWithGps = [];
         $photosNoGps   = [];
         $directories   = $db->getDirectories();
+        $customFields  = $db->getCustomFields();
+        $emptyGroupToken = $db->getEmptyGroupToken();
+        $customFilter = [
+            'field' => $customFilterField,
+            'operator' => $customFilterOperator,
+            'value' => $customFilterValue,
+        ];
+        $listBaseParams = $buildListParams(['selected' => null]);
 
         switch ($group) {
             case 'directory':
@@ -179,11 +244,15 @@ switch ($view) {
                 $groupField = 'directory';
                 $groups     = $db->groupByDirectory();
                 if ($selected !== '') {
-                    $photos = $db->getByDirectory($selected);
+                    $photos = $db->getByDirectory($selected, $includeSubdirs);
                 } elseif (!empty($groups)) {
                     $selected = $groups[0]['directory'];
-                    $photos   = $db->getByDirectory($selected);
+                    $photos   = $db->getByDirectory($selected, $includeSubdirs);
                 }
+                $listBaseParams = $buildListParams([
+                    'selected' => null,
+                    'include_subdirs' => $includeSubdirs ? '1' : null,
+                ]);
                 break;
 
             case 'extension':
@@ -240,11 +309,35 @@ switch ($view) {
                 $extraHead = '<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">';
                 break;
 
+            case 'custom':
+                $pageTitle  = 'Custom Filter Grouping';
+                $groupField = 'group_value';
+                $groups     = $db->groupByCustomFilter($customGroupBy, $customFilter);
+
+                if ($selected !== '') {
+                    $photos = $db->getByCustomSelection($customGroupBy, $selected, $customFilter);
+                } elseif (!empty($groups)) {
+                    $selected = $groups[0]['group_value'];
+                    $photos   = $db->getByCustomSelection($customGroupBy, $selected, $customFilter);
+                }
+
+                $listBaseParams = $buildListParams([
+                    'selected' => null,
+                    'custom_group_by' => $customGroupBy,
+                    'filter_field' => $customFilterField,
+                    'filter_operator' => $customFilterOperator,
+                    'filter_value' => $customFilterValue !== '' ? $customFilterValue : null,
+                ]);
+                break;
+
             default:
                 $group = 'directory';
                 header('Location: index.php?view=list&group=directory');
                 exit;
         }
+        $returnQueryString = http_build_query(array_merge($listBaseParams, [
+            'selected' => $selected !== '' ? $selected : null,
+        ]));
         include __DIR__ . '/templates/list.php';
         break;
 }

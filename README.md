@@ -1,2 +1,2 @@
 # phorganizer
-A photo orginizer
+A photo organizer
